@@ -1,0 +1,40 @@
+---
+- name: Installation de SonarQ
+  hosts: jenkins:master:worker1:worker2
+  become: true
+  tasks:
+    - name: Mise à jour du système
+      apt:
+        update_cache: yes
+        upgrade: yes
+
+    - name: Installation de Docker
+      apt:
+        name: docker.io
+        state: present
+
+    - name: Démarrage du service Docker
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Installation de SonarQ sur Jenkins
+      hosts: jenkins
+      become: true
+      tasks:
+        - name: Création du conteneur SonarQ
+          shell: docker run -d --name sonar -p 9000:9000 sonarqube:lts-community
+
+- name: Vérification des conteneurs Docker
+  hosts: jenkins
+  become: true
+  tasks:
+    - name: Vérifier si le conteneur SonarQ est en cours d'exécution
+      shell: docker ps -a | grep sonar
+      register: sonar_container_status
+      ignore_errors: true
+
+    - name: Afficher le statut du conteneur SonarQ
+      debug:
+        msg: "Le conteneur SonarQ est {{ 'en cours d\'exécution' if sonar_container_status.stdout else 'arrêté' }}"
