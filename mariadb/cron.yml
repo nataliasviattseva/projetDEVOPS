@@ -1,0 +1,6 @@
+---
+- name :
+  hosts: [jenkins]
+  tasks:
+  shell: 10 * * * * /usr/bin/mysqldump -u root galera_cluster_db > /home/srv-sql1/bd-$(date +\%d\%m\%Y).sql
+         10 * * * * /usr/bin/mysqldump --opt galera_cluster_db | mysql --host=10.8.2.244 -C galera_cluster_db1
