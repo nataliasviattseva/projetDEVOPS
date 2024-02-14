@@ -1,0 +1,152 @@
+#!/bin/bash
+
+# Fonction pour afficher l'utilisation du script
+usage() {
+    echo "Usage: $0"
+    exit 1
+}
+
+# Fonction pour vérifier si la dernière commande a réussi ou non
+check_error() {
+    if [ $? -ne 0 ]; then
+        echo "Erreur rencontrée. Arrêt du script."
+        exit 1
+    fi
+}
+
+# Créer l'utilisateur prometheus sans création de répertoire personnel et avec shell nologin
+sudo useradd --no-create-home --shell /usr/sbin/nologin prometheus
+check_error
+
+# Créer l'utilisateur node_exporter sans création de répertoire personnel et avec shell /bin/false
+sudo useradd --no-create-home --shell /bin/false node_exporter
+check_error
+
+# Créer les répertoires pour Prometheus
+sudo mkdir -p /etc/prometheus /var/lib/prometheus
+check_error
+
+# Changer les propriétaires des répertoires Prometheus
+sudo chown prometheus:prometheus /etc/prometheus /var/lib/prometheus
+check_error
+
+# Télécharger et extraire node_exporter
+wget https://github.com/prometheus/node_exporter/releases/download/v1.1.2/node_exporter-1.1.2.linux-amd64.tar.gz
+check_error
+tar xvf node_exporter-1.1.2.linux-amd64.tar.gz
+check_error
+
+# Copier node_exporter dans /usr/local/bin et définir le propriétaire
+sudo cp node_exporter-1.1.2.linux-amd64/node_exporter /usr/local/bin
+check_error
+sudo chown node_exporter:node_exporter /usr/local/bin/node_exporter
+check_error
+
+# Créer et éditer le service systemd pour node_exporter
+sudo tee /etc/systemd/system/node_exporter.service > /dev/null <<EOF
+[Unit]
+Description=Node Exporter
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=node_exporter
+Group=node_exporter
+Type=simple
+ExecStart=/usr/local/bin/node_exporter
+
+[Install]
+WantedBy=multi-user.target
+EOF
+check_error
+
+# Recharger systemd et démarrer node_exporter
+sudo systemctl daemon-reload
+check_error
+sudo systemctl start node_exporter
+check_error
+
+# Télécharger et extraire Prometheus
+wget https://github.com/prometheus/prometheus/releases/download/v2.50.0-rc.0/prometheus-2.50.0-rc.0.linux-amd64.tar.gz
+check_error
+tar xvf prometheus-2.50.0-rc.0.linux-amd64.tar.gz
+check_error
+
+# Copier Prometheus et Promtool dans /usr/local/bin
+sudo cp prometheus-2.50.0-rc.0.linux-amd64/{prometheus,promtool} /usr/local/bin/
+check_error
+
+# Créer et éditer le fichier de configuration pour Prometheus
+sudo tee /etc/prometheus/prometheus.yml > /dev/null <<EOF
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+rule_files:
+  # - "first.rules"
+  # - "second.rules"
+scrape_configs:
+  - job_name: 'prometheus'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['localhost:9090']
+  - job_name: 'node_exporter'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['localhost:9100']
+  - job_name: 'grafana'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['localhost:3000']
+EOF
+check_error
+
+# Définir les propriétaires pour prometheus.yml
+sudo chown prometheus:prometheus /etc/prometheus/prometheus.yml
+check_error
+
+# Démarrer Prometheus en tant qu'utilisateur prometheus
+sudo -u prometheus /usr/local/bin/prometheus --config.file /etc/prometheus/prometheus.yml --storage.tsdb.path /var/lib/prometheus/ --web.console.templates=/etc/prometheus/consoles --web.console.libraries=/etc/prometheus/console_libraries
+check_error
+
+# Créer et éditer le service systemd pour Prometheus
+sudo tee /etc/systemd/system/prometheus.service > /dev/null <<EOF
+[Unit]
+Description=Prometheus Monitoring
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=prometheus
+Group=prometheus
+Type=simple
+ExecStart=/usr/local/bin/prometheus \
+  --config.file /etc/prometheus/prometheus.yml \
+  --storage.tsdb.path /var/lib/prometheus/ \
+  --web.console.templates=/etc/prometheus/consoles \
+  --web.console.libraries=/etc/prometheus/console_libraries
+ExecReload=/bin/kill -HUP $MAINPID
+
+[Install]
+WantedBy=multi-user.target
+EOF
+check_error
+
+# Recharger systemd et démarrer Prometheus
+sudo systemctl daemon-reload
+check_error
+sudo systemctl enable prometheus
+check_error
+sudo systemctl start prometheus
+check_error
+
+# Installation de Grafana
+sudo apt-get install -y adduser libfontconfig1
+check_error
+wget https://dl.grafana.com/oss/release/grafana_7.4.3_amd64.deb
+check_error
+sudo dpkg -i grafana_7.4.3_amd64.deb
+check_error
+sudo systemctl daemon-reload && sudo systemctl enable grafana-server && sudo systemctl start grafana-server
+check_error
+
+echo "Toutes les étapes sont terminées avec succès."
