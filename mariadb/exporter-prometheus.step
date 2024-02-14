@@ -53,3 +53,40 @@ WantedBy=multi-user.target
 sudo systemctl daemon-reload
 sudo systemctl enable mysql_exporter
 sudo systemctl start mysql_exporter
+
+=================================================================================================================
+
+sudo apt-get install -y adduser libfontconfig1
+wget https://dl.grafana.com/oss/release/grafana_7.4.3_amd64.deb
+sudo dpkg -i grafana_7.4.3_amd64.deb
+sudo systemctl daemon-reload && sudo systemctl enable grafana-server && sudo systemctl start grafana-server
+
+nano prometheus.yml
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+rule_files:
+  # - "first.rules"
+  # - "second.rules"
+scrape_configs:
+  - job_name: 'prometheus'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['localhost:9090'
+  - job_name: 'node_exporter'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['localhost:9100']
+  - job_name: 'grafana'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['localhost:3000']
+
+sudo systemctl daemon-reload
+sudo systemctl enable prometheus
+sudo systemctl start prometheus
+sudo systemctl daemon-reload
+sudo systemctl enable node-exporter
+sudo systemctl stop node-exporter
+sudo systemctl start node-exporter
+========================================================================================================================
