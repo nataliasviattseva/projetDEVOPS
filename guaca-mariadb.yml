@@ -1,0 +1,93 @@
+---
+- name: Installation de Guacamole Server et configuration de la base de données
+  hosts: all
+  become: true
+  tasks:
+    - name: Mise à jour du système
+      shell: sudo apt-get update
+
+    - name: Installation des dépendances pour Guacamole Server
+      shell: |
+        sudo apt-get install -y build-essential libcairo2-dev libjpeg62-turbo-dev libpng-dev libtool-bin uuid-dev libossp-uuid-dev libavcodec-dev libavformat-dev libavutil-dev libswscale-dev freerdp2-dev libpango1.0-dev libssh2-1-dev libtelnet-dev libvncserver-dev libwebsockets-dev libpulse-dev libssl-dev libvorbis-dev libwebp-dev
+
+    - name: Téléchargement et installation de Guacamole Server
+      shell: |
+        cd /tmp
+        wget https://downloads.apache.org/guacamole/1.5.2/source/guacamole-server-1.5.2.tar.gz
+        tar -xzf guacamole-server-1.5.2.tar.gz
+        cd guacamole-server-1.5.2/
+        sudo ./configure --with-init-dir=/etc/init.d
+        sudo make
+        sudo make install
+        sudo ldconfig
+        sudo systemctl daemon-reload
+        sudo systemctl start guacd
+        sudo systemctl enable guacd
+        sudo mkdir -p /etc/guacamole/{extensions,lib}
+
+    - name: Installation de Tomcat9
+      shell: |
+        sudo apt-get install -y tomcat9 tomcat9-admin tomcat9-common tomcat9-user
+
+    - name: Déploiement de Guacamole dans Tomcat9
+      shell: |
+        cd /tmp
+        wget https://downloads.apache.org/guacamole/1.5.2/binary/guacamole-1.5.2.war
+        sudo mv guacamole-1.5.2.war /var/lib/tomcat9/webapps/guacamole.war
+        sudo systemctl restart tomcat9
+
+
+
+- name: Configuration de la base de données sur Worker1
+  hosts: worker1
+  become: true
+  tasks:
+    - name: Création de la base de données Guacamole et de l'utilisateur
+      shell: |
+        mysql -u root -p'worker1' <<EOF
+        CREATE DATABASE guacadb;
+        CREATE USER 'guaca_nachos'@'localhost' IDENTIFIED BY 'worker1';
+        GRANT SELECT,INSERT,UPDATE,DELETE ON guacadb.* TO 'guaca_nachos'@'localhost';
+        FLUSH PRIVILEGES;
+        EXIT;
+EOF
+
+    - name: Déplacement des fichiers Guacamole Auth JDBC et MySQL Connector-J
+      shell: |
+        cd /tmp
+        wget https://downloads.apache.org/guacamole/1.5.2/binary/guacamole-auth-jdbc-1.5.2.tar.gz
+        tar -xzf guacamole-auth-jdbc-1.5.2.tar.gz
+        sudo mv guacamole-auth-jdbc-1.5.2/mysql/guacamole-auth-jdbc-mysql-1.5.2.jar /etc/guacamole/extensions/
+        wget https://dev.mysql.com/get/Downloads/Connector-J/mysql-connector-j-8.0.33.tar.gz
+        tar -xzf mysql-connector-j-8.0.33.tar.gz
+        sudo cp mysql-connector-j-8.0.33/mysql-connector-j-8.0.33.jar /etc/guacamole/lib/
+
+    - name: Exécution des scripts SQL pour Guacamole
+      shell: |
+        cd /tmp/guacamole-auth-jdbc-1.5.2/mysql/schema/
+        cat *.sql | mysql -u root -p'worker1'
+
+    - name: Configuration du fichier guacamole.properties
+      become: true
+      shell: |
+        nano /etc/guacamole/guacamole.properties
+        # MySQL
+        mysql-hostname: 127.0.0.1
+        mysql-port: 3306
+        mysql-database: guacadb
+        mysql-username: guaca_nachos
+        mysql-password: worker1
+
+    - name: Créer le fichier guacd.conf
+      become: true
+      shell: echo "[server]\nbind_host = 0.0.0.0\nbind_port = 4822" > /etc/guacamole/guacd.conf
+
+    - name: Redémarrage de MariaDB
+      service:
+        name: mariadb
+        state: restarted
+
+    - name: Redémarrage de Guacd
+      service:
+        name: guacd
+        state: restarted
