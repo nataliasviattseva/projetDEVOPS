@@ -1,19 +1,5 @@
 #!/bin/bash
 
-# Fonction pour afficher l'utilisation du script
-usage() {
-    echo "Usage: $0"
-    exit 1
-}
-
-# Fonction pour vérifier si la dernière commande a réussi ou non
-check_error() {
-    if [ $? -ne 0 ]; then
-        echo "Erreur rencontrée. Arrêt du script."
-        exit 1
-    fi
-}
-
 # Créer l'utilisateur prometheus sans création de répertoire personnel et avec shell nologin
 sudo useradd --no-create-home --shell /usr/sbin/nologin prometheus
 check_error
