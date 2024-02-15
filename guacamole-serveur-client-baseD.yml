@@ -28,8 +28,9 @@
         sudo systemctl daemon-reload
         sudo systemctl start guacd
         sudo systemctl enable guacd
-        sudo mkdir -p /etc/guacamole/{extensions,lib}
-
+        sudo mkdir -p /etc/guacamole/extensions
+        sudo mkdir -p /etc/guacamole/lib
+        
     - name: Installation de Tomcat9
       shell: |
         sudo apt-get install -y tomcat9 tomcat9-admin tomcat9-common tomcat9-user
