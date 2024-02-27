@@ -1,0 +1,43 @@
+---
+- name: Installation de HAProxy
+  hosts: srv-guaca
+  tasks:
+    - name: Mise à jour du système
+      become: true
+      shell: apt update
+
+    - name: Installation de HAProxy
+      become: true
+      shell: apt install haproxy -y
+
+    - name: Copier le modèle de configuration HAProxy
+      template:
+        src: haproxy.cfg.j2
+        dest: /etc/haproxy/haproxy.cfg
+        notify: Reload HAProxy
+        
+    - name: restart haproxy
+      become: true
+      shell : systemctl restart haproxy
+      
+- name: Installation de git
+  hosts: srv-guaca
+  tasks:
+    - name: Installation de git
+      become: true
+      shell: apt install git -y
+
+- name: Installation de Docker et Docker Compose
+  hosts: srv-guaca
+  tasks:
+    - name: Installation de Docker et Docker Compose
+      become: true
+      shell: apt install docker.io docker-compose -y
+    
+    - name: Clonage du dépôt Git, préparation et démarrage du docker-compose
+      become: yes
+      shell: |
+        git clone "https://github.com/boschkundendienst/guacamole-docker-compose.git"
+        cd guacamole-docker-compose
+        ./prepare.sh
+        docker-compose up -d
