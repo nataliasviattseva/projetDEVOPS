@@ -1,11 +1,17 @@
+---
+- name: Installation de jenkins
+  hosts: srv-jenkins
+  become: true
+  tasks:
+    - name: Mise à jour du système
+      shell: sudo apt-get update
 
     - name: Installation du JDK
       become: true
-      apt:
-        name: openjdk-17-jdk  # Assurez-vous de sp  cifier la version du JDK que vous souhaitez installer
-        state: present
+      shell: apt install openjdk-17-jdk -y
 
     - name: Installation de Jenkins
+      become: true
       shell: |
         sudo wget -O /usr/share/keyrings/jenkins-keyring.asc \
         https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
@@ -15,18 +21,19 @@
         sudo apt-get update
         sudo apt-get install jenkins -y
 
-
     - name: Installation de Docker
+      become: true
       shell: apt-get install docker.io -y
 
     - name: Ajout de l'utilisateur au groupe Docker
+      become: true
       user:
         name: ubuntu
         groups: docker
         append: yes
 
-    
     - name: Installation de Trivy
+      become: true
       apt:
         name: "{{ item }}"
         state: present
@@ -37,5 +44,5 @@
         - lsb-release
 
     - name: Creation du conteneur SonarQ
+      become: true
       shell: docker run -d --name sonar -p 9000:9000 sonarqube:lts-community
-
