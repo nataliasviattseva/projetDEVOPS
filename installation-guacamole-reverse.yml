@@ -1,0 +1,72 @@
+---
+- name: Installation de HAProxy
+  hosts: srv-guaca
+  tasks:
+    - name: Mise à jour du système
+      become: true
+      shell: apt update
+
+    - name: Installation de HAProxy
+      become: true
+      shell: apt install haproxy -y && nano /etc/haproxy/haproxy.cfg
+      args:
+        warn: no
+        stdin: |
+          defaults
+            mode http
+            timeout server 5s
+            timeout connect 5s
+            timeout client 5s
+          frontend stats
+            bind *:8181
+            stats enable
+            stats uri /stats
+            stats refresh 5s
+          frontend frontend
+            bind *:1234
+            use_backend backend
+          backend backend
+            server srv1 10.8.2.246:8080
+            server srv2 10.8.2.247:8888
+
+- name: Installation de git
+  hosts: srv-guaca
+  tasks:
+    - name: Installation de git
+      become: true
+      shell: apt install git -y
+
+- name: Installation de Docker et Docker Compose
+  hosts: srv-guaca
+  tasks:
+    - name: Installation de Docker et Docker Compose
+      become: true
+      shell: apt install docker.io docker-compose -y
+
+- name: Installation du docker-compose guaca
+  hosts: srv-guaca
+  tasks:
+    - name: Création du répertoire
+      become: true
+      shell: mkdir -p /home/guacamOle-reverse/bastion
+    - name: Clonage du dépôt Git
+      become: true
+      git:
+        repo: "https://github.com/boschkundendienst/guacamole-docker-compose.git"
+        dest: "/home/guacamOle-reverse/bastion"
+      args:
+        warn: no
+    - name: Exécution du script de préparation
+      become: true
+      shell: |
+        cd /home/guacamOle-reverse/bastion
+        ./prepare.sh
+
+- name: Démarrage des conteneurs Docker avec Docker Compose
+  hosts: srv-guaca
+  tasks:
+    - name: Démarrage des conteneurs Docker
+      become: true
+      shell: |
+        cd /home/guacamOle-reverse/bastion
+        docker-compose up -d
