@@ -1,6 +1,6 @@
 ---
 - name: Installation de MariaDB et configuration Galera
-  hosts: jenkins:worker1
+  hosts: master:worker
   become: true
   tasks:
     - name: Mise à jour du système
@@ -20,7 +20,7 @@
         enabled: yes
 
 - name: Installation de MariaDB et configuration Galera
-  hosts: jenkins
+  hosts: master
   become: true
   tasks:
     - name: création de fichier
@@ -39,22 +39,22 @@
           wsrep_on=ON
           wsrep_provider=/usr/lib/galera/libgalera_smm.so
           # Galera Cluster Configuration
-          wsrep_cluster_name="test_cluster"
-          wsrep_cluster_address="gcomm://10.8.2.240,10.8.2.242"
+          wsrep_cluster_name="all_db_cluster"
+          wsrep_cluster_address="gcomm://10.8.2.243,10.8.2.242"
           # Galera Synchronization Configuration
           wsrep_sst_method=rsync
           # Galera Node Configuration
-          wsrep_node_address="10.8.2.240"
-          wsrep_node_name="jenkins"
+          wsrep_node_address="10.8.2.243"
+          wsrep_node_name="master"
 
 - name: Installation de MariaDB et configuration Galera
-  hosts: worker1
+  hosts: worker
   become: true
   tasks:
     - name: création de fichier
       shell: touch /etc/mysql/conf.d/galera.cnf
 
-    - name: Configuration de Galera sur worker1
+    - name: Configuration de Galera sur worker
       blockinfile:
         path: /etc/mysql/conf.d/galera.cnf
         block: |
@@ -67,16 +67,16 @@
           wsrep_on=ON
           wsrep_provider=/usr/lib/galera/libgalera_smm.so
           # Galera Cluster Configuration
-          wsrep_cluster_name="test_cluster"
-          wsrep_cluster_address="gcomm://10.8.2.240,10.8.2.242"
+          wsrep_cluster_name="all_db_cluster"
+          wsrep_cluster_address="gcomm://10.8.2.243,10.8.2.242"
           # Galera Synchronization Configuration
           wsrep_sst_method=rsync
           # Galera Node Configuration
           wsrep_node_address="10.8.2.242"
-          wsrep_node_name="worker1"
+          wsrep_node_name="worker"
 
 - name: Installation de MariaDB et configuration Galera
-  hosts: jenkins:worker1
+  hosts: master:worker
   become: true
   tasks:
     - name: Arrêt de MariaDB sur jen/work1
@@ -84,18 +84,18 @@
         name: mariadb
         state: stopped
 
-- name: Nouveau cluster sur jenkins
-  hosts: jenkins
+- name: Nouveau cluster sur master
+  hosts: master
   become: true
   tasks:
-    - name: Initialisation d'un nouveau cluster Galera sur jenkins
+    - name: Initialisation d'un nouveau cluster Galera sur le master-db
       shell: galera_new_cluster
 
     - name: Démarrage de MariaDB sur jenkins
       shell: systemctl start mariadb
 
-- name: Démarrage de MariaDB sur worker1
-  hosts: worker1
+- name: Démarrage de MariaDB sur worker
+  hosts: worker
   become: true
   tasks:
     - name: Démarrage de MariaDB
