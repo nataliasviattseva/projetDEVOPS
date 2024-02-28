@@ -1,0 +1,156 @@
+---
+- name: Configuration de Kubernetes sur le serveur kms
+  hosts: kms;jenkins;kws
+  become: true
+  tasks:
+    - name: Installation des paquets et des référentiels pour Kubernetes
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - curl
+        - apt-transport-https
+        - gnupg2
+        - software-properties-common
+        - ca-certificates
+      become: true
+
+    - name: Importer la clé GPG de Kubernetes
+      shell: curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /etc/apt/trusted.gpg.d/k8s.gpg
+
+    - name: Ajouter le référentiel Kubernetes
+      apt_repository:
+        repo: deb https://apt.kubernetes.io/ kubernetes-xenial main
+        state: present
+
+    - name: Mettre à jour la liste des paquets
+      apt:
+        update_cache: yes
+
+    - name: Installer les outils Kubernetes
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - kubelet
+        - kubeadm
+        - kubectl
+
+    - name: Empêcher la suppression automatique des paquets Kubernetes
+      apt_mark:
+        name: "{{ item }}"
+        state: hold
+      loop:
+        - kubelet
+        - kubeadm
+        - kubectl
+
+    - name: Désactiver le swap
+      command: swapoff -a
+      ignore_errors: yes
+
+    - name: Configuration des paramètres sysctl pour Kubernetes
+      sysctl:
+        name: "{{ item }}"
+        value: 1
+        state: present
+        sysctl_set: yes
+      loop:
+        - net.bridge.bridge-nf-call-ip6tables
+        - net.bridge.bridge-nf-call-iptables
+        - net.ipv4.ip_forward
+
+    - name: Installation de Docker
+      apt:
+        name: docker-ce
+        state: present
+
+    - name: Créer le fichier de configuration du démon Docker
+      template:
+        src: daemon.json.j2
+        dest: /etc/docker/daemon.json
+      notify: Restart Docker
+
+    - name: Redémarrer Docker
+      command: systemctl restart docker
+      async: 45
+      poll: 0
+      ignore_errors: true
+      notify: Wait for Docker
+
+    - name: Charger les modules pour Kubernetes
+      modprobe:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - overlay
+        - br_netfilter
+
+    - name: Configuration des paramètres sysctl pour Kubernetes (suite)
+      sysctl:
+        name: "{{ item }}"
+        value: 1
+        state: present
+        sysctl_set: yes
+      loop:
+        - overlay
+        - br_netfilter
+
+    - name: Télécharger et installer CRI Dockerd
+      block:
+        - name: Récupérer la dernière version de CRI Dockerd
+          shell: VER=$(curl -s https://api.github.com/repos/Mirantis/cri-dockerd/releases/latest|grep tag_name | cut -d '"' -f 4|sed 's/v//g') && echo $VER
+          register: cri_version
+
+        - name: Télécharger CRI Dockerd
+          get_url:
+            url: "https://github.com/Mirantis/cri-dockerd/releases/download/v{{ cri_version.stdout }}/cri-dockerd-{{ cri_version.stdout }}.amd64.tgz"
+            dest: "/tmp/cri-dockerd-{{ cri_version.stdout }}.amd64.tgz"
+
+        - name: Extraire CRI Dockerd
+          unarchive:
+            src: "/tmp/cri-dockerd-{{ cri_version.stdout }}.amd64.tgz"
+            dest: "/usr/local/bin"
+            remote_src: yes
+            creates: "/usr/local/bin/cri-dockerd-{{ cri_version.stdout }}"
+
+        - name: Renommer CRI Dockerd
+          command: mv "/usr/local/bin/cri-dockerd-{{ cri_version.stdout }}" /usr/local/bin/cri-dockerd
+          args:
+            creates: /usr/local/bin/cri-dockerd
+
+        - name: Vérifier l'installation de CRI Dockerd
+          command: cri-dockerd --version
+          changed_when: false
+          check_mode: no
+
+        - name: Télécharger le fichier de service CRI Dockerd
+          get_url:
+            url: "https://raw.githubusercontent.com/Mirantis/cri-dockerd/master/packaging/systemd/cri-docker.service"
+            dest: "/etc/systemd/system/cri-docker.service"
+
+        - name: Télécharger le fichier de socket CRI Dockerd
+          get_url:
+            url: "https://raw.githubusercontent.com/Mirantis/cri-dockerd/master/packaging/systemd/cri-docker.socket"
+            dest: "/etc/systemd/system/cri-docker.socket"
+
+        - name: Activer et démarrer le service CRI Dockerd
+          systemd:
+            name: cri-docker
+            enabled: yes
+            state: started
+            daemon_reload: yes
+
+      notify: Restart Docker
+
+  handlers:
+    - name: Restart Docker
+      systemd:
+        name: docker
+        state: restarted
+        daemon_reload: yes
+
+    - name: Wait for Docker
+      wait_for:
+        port: 2375
+        delay: 10
