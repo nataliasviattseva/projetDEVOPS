@@ -1,0 +1,67 @@
+---
+- name: Configure Kubernetes Control Plane
+  hosts: control_plane
+  become: true
+  tasks:
+    - name: Load br_netfilter module
+      shell: modprobe br_netfilter
+      ignore_errors: yes
+
+    - name: Enable kubelet service
+      systemd:
+        name: kubelet
+        enabled: yes
+
+    - name: Pull Kubernetes images
+      command: kubeadm config images pull
+      args:
+        creates: /etc/kubernetes/manifests
+
+    - name: Initialize Kubernetes cluster
+      command: kubeadm init --cri-socket unix:///var/run/cri-dockerd.sock --pod-network-cidr=10.244.0.0/16
+      args:
+        creates: /etc/kubernetes/manifests
+
+    - name: Configure kubectl for user
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: ~/.kube/config
+        remote_src: yes
+        owner: "{{ ansible_user_id }}"
+        group: "{{ ansible_user_id }}"
+        mode: '0600'
+
+    - name: Download Flannel configuration
+      get_url:
+        url: https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml
+        dest: /tmp/kube-flannel.yml
+
+    - name: Apply Flannel configuration
+      command: kubectl apply -f /tmp/kube-flannel.yml
+      register: flannel_output
+      ignore_errors: yes
+
+    - name: Check Flannel deployment status
+      command: kubectl get pods -n kube-flannel
+      register: flannel_pods
+
+    - debug:
+        msg: "Flannel pods are deployed successfully"
+      when: flannel_pods.rc == 0
+
+    - name: Get Kubernetes nodes information
+      command: kubectl get nodes -o wide
+
+    - name: Display Kubernetes cluster info
+      command: kubectl cluster-info
+
+    - name: Generate token for joining nodes
+      command: kubeadm token create --print-join-command > /tmp/token.txt
+      args:
+        creates: /tmp/token.txt
+
+    - name: Store join token in file
+      lineinfile:
+        path: /tmp/token.txt
+        line: "sudo $(cat /tmp/token.txt) --cri-socket unix:///var/run/cri-dockerd.sock"
+        create: yes
