@@ -1,0 +1,67 @@
+---
+- name: Déploiement du service web Nginx et de Portainer avec l'agent Kubernetes
+  hosts: all
+  become: true
+  tasks:
+    - name: Création du répertoire pour les manifestes Kubernetes
+      become: true
+      file:
+        path: /root/nginx
+        state: directory
+    
+    - name: Création du manifeste pour le déploiement Nginx
+      become: true
+      copy:
+        content: |
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: nginx-deployment
+            labels:
+              app: nginx
+          spec:
+            replicas: 3
+            selector:
+              matchLabels:
+                app: nginx
+            template:
+              metadata:
+                labels:
+                  app: nginx
+              spec:
+                containers:
+                  - name: nginx
+                    image: nginx
+                    ports:
+                      - containerPort: 80
+        dest: /root/nginx/nginx-deployment.yaml
+    
+    - name: Création du service pour Nginx
+      become: true
+      copy:
+        content: |
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: nginx-service
+            labels:
+              run: nginx-service
+          spec:
+            type: NodePort
+            ports:
+              - port: 80
+                protocol: TCP
+            selector:
+              app: nginx
+        dest: /root/nginx/nginx-service.yaml
+    
+    - name: Déploiement du service Nginx
+      shell: kubectl apply -f /root/nginx/nginx-deployment.yaml
+
+    - name: Création du service Nginx
+      shell: kubectl apply -f /root/nginx/nginx-service.yaml
+
+    - name: Déploiement de Portainer
+      shell: |
+        docker run -d -p 8000:8000 -p 9443:9443 --name portainer --restart=always -v /var/run/docker.sock:/var/run/docker.sock -v portainer_data:/data portainer/portainer-ce:latest
+        kubectl apply -f https://downloads.portainer.io/ce2-19/portainer-agent-k8s-nodeport.yaml
